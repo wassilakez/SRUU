@@ -21,7 +21,7 @@ import java.util.Random;
  *
  * Comportement :
  *   - Attend 3 s après démarrage (laisse le temps aux autres agents de s'enregistrer).
- *   - Génère un incident aléatoire toutes les 8 s (TickBehaviour).
+ *   - Génère un incident aléatoire toutes les 8 s (TickerBehaviour).
  *   - Envoie INFORM au Dispatcher avec : type, gravité, (x,y), conversationId = incidentId.
  *   - S'arrête après MAX_INCIDENTS incidents pour ne pas surcharger la démo.
  */
@@ -59,7 +59,7 @@ public class SensorAgent extends Agent {
 
     /** Démarre la boucle périodique de génération d'incidents. */
     private void startDetectionLoop() {
-        addBehaviour(new TickBehaviour(this, TICK_INTERVAL_MS) {
+        addBehaviour(new TickerBehaviour(this, TICK_INTERVAL_MS) {
             @Override
             protected void onTick() {
                 if (count >= MAX_INCIDENTS) {
