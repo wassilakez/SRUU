@@ -85,18 +85,32 @@ public class DispatcherAgent extends Agent {
             }
         });
 
-        // ── Comportement 3 : recevoir ARRIVED / RESOLVED / ABORT ─────────
+     // ── Comportement 3 : recevoir les INFORM des unités (sans ontologie) ──
         addBehaviour(new CyclicBehaviour(this) {
             @Override
             public void action() {
-                MessageTemplate mt = MessageTemplate.and(
-                    MessageTemplate.MatchPerformative(ACLMessage.INFORM),
-                    MessageTemplate.not(
-                        MessageTemplate.MatchOntology(EmergencyOntology.ONTOLOGY_NAME))
-                );
-                ACLMessage msg = receive(mt);
+                ACLMessage msg = receive(MessageTemplate.MatchPerformative(ACLMessage.INFORM));
                 if (msg != null) {
-                    handleUnitUpdate(msg);
+                    String ont = msg.getOntology();
+                    // Si c'est une alerte capteur, on l'ignore ici (déjà traité par comportement 1)
+                    if (ont == null || !EmergencyOntology.ONTOLOGY_NAME.equals(ont)) {
+                        handleUnitUpdate(msg);
+                    }
+                } else {
+                    block();
+                }
+            }
+        });
+        
+     // ── Comportement 4 : recevoir les FAILURE (unités qui refusent ou ABORT) ──
+        addBehaviour(new CyclicBehaviour(this) {
+            @Override
+            public void action() {
+                ACLMessage msg = receive(MessageTemplate.MatchPerformative(ACLMessage.FAILURE));
+                if (msg != null) {
+                    System.out.printf("[DISPATCHER] FAILURE reçu de %s pour %s%n", 
+                        msg.getSender().getLocalName(), msg.getConversationId());
+                    // Optionnel : vous pouvez aussi appeler handleUnitUpdate(msg) si besoin
                 } else {
                     block();
                 }
@@ -229,12 +243,18 @@ public class DispatcherAgent extends Agent {
         double     bestScore = -1;
 
         for (ACLMessage p : proposals) {
+            String unitName = p.getSender().getLocalName();
+            // ⭐ Ignorer les unités déjà occupées
+            if (unitAssignments.containsKey(unitName)) {
+                System.out.printf("[DISPATCHER] Unité %s déjà occupée, ignorée pour %s%n", unitName, incidentId);
+                continue;
+            }
             double score = computeUtility(p, incident);
             System.out.printf("[DISPATCHER]   Score %-15s = %.4f%n",
                     p.getSender().getLocalName(), score);
             if (score > bestScore) {
                 bestScore = score;
-                best      = p;
+                best = p;
             }
         }
 
