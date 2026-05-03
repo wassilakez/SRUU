@@ -64,9 +64,7 @@ public class Incident implements Serializable {
             EmergencyOntology.KEY_COORD_Y,       String.valueOf(y)
         );
     }
-    public String toACL() {
-        return toACLContent();
-    }
+
     @Override
     public String toString() {
         return String.format("[%s | type=%s | sev=%d | pos=(%d,%d) | status=%s]",
