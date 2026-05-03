@@ -44,17 +44,15 @@ public class PoliceAgent extends Agent {
 
     @Override
     protected void setup() {
-        Object[] args = getArguments();
-        if (args != null && args.length == 1) {
-            String[] coords = args[0].toString()
-                                     .replaceAll("[^0-9,]", "").split(",");
-            if (coords.length == 2) {
-                posX  = Double.parseDouble(coords[0]);
-                posY  = Double.parseDouble(coords[1]);
-                baseX = posX;
-                baseY = posY;
-            }
-        }
+    	Object[] args = getArguments();
+    	if (args != null && args.length >= 2) {
+    	    try {
+    	        posX = Double.parseDouble(args[0].toString());
+    	        posY = Double.parseDouble(args[1].toString());
+    	        baseX = posX;
+    	        baseY = posY;
+    	    } catch (NumberFormatException e) {}
+    	}
         System.out.printf("[POLICE:%s] Démarrage @ (%.0f,%.0f)%n",
                 getLocalName(), posX, posY);
 
@@ -62,7 +60,7 @@ public class PoliceAgent extends Agent {
 
         // ── Comportement 1 : patrouille aléatoire quand IDLE ─────────────
         // LIEN §projet : "comportement de patrouille lorsqu'il est inactif"
-        addBehaviour(new TickBehaviour(this, PATROL_TICK_MS) {
+        addBehaviour(new TickerBehaviour(this, PATROL_TICK_MS) {
             @Override
             protected void onTick() {
                 if (state == State.PATROLLING) {
@@ -72,7 +70,7 @@ public class PoliceAgent extends Agent {
         });
 
         // ── Comportement 2 : déplacement ─────────────────────────────────
-        addBehaviour(new TickBehaviour(this, TICK_MS) {
+        addBehaviour(new TickerBehaviour(this, TICK_MS) {
             @Override
             protected void onTick() {
                 if (state == State.EN_ROUTE || state == State.RETURNING) {
@@ -183,6 +181,14 @@ public class PoliceAgent extends Agent {
     // ACCEPTATION
     // ════════════════════════════════════════════════════════════════════════
     private void handleAccept(ACLMessage accept) {
+    	if (state != State.PATROLLING) {
+            ACLMessage refuse = accept.createReply();
+            refuse.setPerformative(ACLMessage.FAILURE);
+            refuse.setContent("BUSY");
+            send(refuse);
+            System.out.printf("[POLICE:%s] REFUSE (déjà occupé) pour %s%n", getLocalName(), accept.getConversationId());
+            return;
+        }
         String content = accept.getContent();
         currentIncidentId = accept.getConversationId();
         targetX = Double.parseDouble(
