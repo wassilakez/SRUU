@@ -1,9 +1,15 @@
 package sruu;
 
+/**
+ * Lance le système SRUU complet.
+ * IMPORTANT : JADE exige que toutes les spécifications d'agents soient
+ * dans une seule chaîne, séparées par des points-virgules ";" sans espaces.
+ */
 public class Main {
+
     public static void main(String[] args) throws Exception {
-        String[] jadeArgs = {
-            "-gui",
+        // Une seule chaîne contenant TOUS les agents séparés par ";"
+        String agents =
             "dispatcher:sruu.agents.DispatcherAgent;" +
             "medCoord:sruu.agents.MedicalCoordinatorAgent;" +
             "traffic:sruu.agents.TrafficControllerAgent;" +
@@ -17,8 +23,9 @@ public class Main {
             "firetruck2:sruu.agents.FireTruckAgent(19,19);" +
             "police1:sruu.agents.PoliceAgent(5,5);" +
             "police2:sruu.agents.PoliceAgent(14,7);" +
-            "bcu1:sruu.agents.BCUAgent(10,10)"
-        };
+            "bcu1:sruu.agents.BCUAgent(10,10)";
+
+        String[] jadeArgs = { "-gui", agents };
 
         System.out.println("=== DÉMARRAGE SRUU ===");
         jade.Boot.main(jadeArgs);
