@@ -27,8 +27,7 @@ import java.util.Map;
 public class AmbulanceAgent extends Agent {
 
     // ── État interne (FSM) ────────────────────────────────────────────────
-    private enum State { IDLE, EN_ROUTE, ON_SCENE, RETURNING }
-
+	private enum State { IDLE, EN_ROUTE, ON_SCENE, GOING_TO_HOSPITAL, RETURNING }
     private State  state       = State.IDLE;
     private double posX, posY;             // position courante
     private double targetX, targetY;       // destination actuelle
@@ -44,15 +43,14 @@ public class AmbulanceAgent extends Agent {
     @Override
     protected void setup() {
         // Lire la position initiale depuis les arguments JADE
-        Object[] args = getArguments();
-        if (args != null && args.length == 1) {
-            String[] coords = args[0].toString()
-                                     .replaceAll("[^0-9,]", "").split(",");
-            if (coords.length == 2) {
-                posX = Double.parseDouble(coords[0]);
-                posY = Double.parseDouble(coords[1]);
-            }
-        }
+    	Object[] args = getArguments();
+    	if (args != null && args.length >= 2) {
+    	    try {
+    	        posX = Double.parseDouble(args[0].toString());
+    	        posY = Double.parseDouble(args[1].toString());
+    	    } catch (NumberFormatException e) {}
+    	}
+
         System.out.printf("[AMBULANCE:%s] Démarrage @ (%.0f,%.0f)%n",
                 getLocalName(), posX, posY);
 
@@ -91,12 +89,12 @@ public class AmbulanceAgent extends Agent {
             }
         });
 
-        // ── Comportement 3 : déplacement par TickBehaviour ───────────────
-        // LIEN §projet : "déplacement via TickBehaviour — mise à jour incrémentale"
-        addBehaviour(new TickBehaviour(this, TICK_MS) {
+        // ── Comportement 3 : déplacement par TickerBehaviour ───────────────
+        // LIEN §projet : "déplacement via TickerBehaviour — mise à jour incrémentale"
+        addBehaviour(new TickerBehaviour(this, TICK_MS) {
             @Override
             protected void onTick() {
-                if (state == State.EN_ROUTE || state == State.RETURNING) {
+                if (state == State.EN_ROUTE || state == State.RETURNING || state == State.GOING_TO_HOSPITAL) {
                     moveTowards(targetX, targetY);
                 }
             }
@@ -171,6 +169,14 @@ public class AmbulanceAgent extends Agent {
     // ACCEPTATION — passer en EN_ROUTE
     // ════════════════════════════════════════════════════════════════════════
     private void handleAccept(ACLMessage accept) {
+    	if (state != State.IDLE) {
+            ACLMessage refuse = accept.createReply();
+            refuse.setPerformative(ACLMessage.FAILURE);
+            refuse.setContent("BUSY");
+            send(refuse);
+            System.out.printf("[AMBULANCE:%s] REFUSE (déjà occupé) pour %s%n", getLocalName(), accept.getConversationId());
+            return;
+        }
         String content = accept.getContent();
         currentIncidentId = accept.getConversationId();
         targetX = Double.parseDouble(
@@ -184,41 +190,71 @@ public class AmbulanceAgent extends Agent {
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // DÉPLACEMENT INCRÉMENTAL — LIEN §projet TickBehaviour
+    // DÉPLACEMENT INCRÉMENTAL — LIEN §projet TickerBehaviour
     // ════════════════════════════════════════════════════════════════════════
     private void moveTowards(double tx, double ty) {
         double dx = tx - posX;
         double dy = ty - posY;
-        double d  = Math.sqrt(dx * dx + dy * dy);
-
+        double d = Math.sqrt(dx*dx + dy*dy);
         if (d <= SPEED) {
-            // Arrivée à destination
             posX = tx;
             posY = ty;
-            onArrived();
+            // Appeler onArrived seulement si on est en route vers un point
+            if (state == State.EN_ROUTE || state == State.GOING_TO_HOSPITAL) {
+                onArrived();
+            }
         } else {
             posX += SPEED * dx / d;
             posY += SPEED * dy / d;
         }
     }
-
+    private void requestHospital() {
+        AID medCoord = findServiceAgent(EmergencyOntology.SERVICE_MEDICAL_COORD);
+        if (medCoord == null) {
+            System.out.printf("[AMBULANCE:%s] Pas de coordinateur médical, résolution sans hôpital%n", getLocalName());
+            finishTreatment();
+            return;
+        }
+        ACLMessage req = new ACLMessage(ACLMessage.REQUEST);
+        req.addReceiver(medCoord);
+        req.setConversationId(currentIncidentId);
+        req.setContent(EmergencyOntology.serialize(
+            EmergencyOntology.KEY_COORD_X, String.valueOf((int) posX),
+            EmergencyOntology.KEY_COORD_Y, String.valueOf((int) posY),
+            "unitName", getLocalName()
+        ));
+        send(req);
+        state = State.GOING_TO_HOSPITAL;
+        System.out.printf("[AMBULANCE:%s] Demande d'hôpital pour %s%n", getLocalName(), currentIncidentId);
+    }
+    private AID findServiceAgent(String serviceType) {
+        try {
+            DFAgentDescription template = new DFAgentDescription();
+            ServiceDescription sd = new ServiceDescription();
+            sd.setType(serviceType);
+            template.addServices(sd);
+            DFAgentDescription[] results = DFService.search(this, template);
+            if (results.length > 0) return results[0].getName();
+        } catch (Exception ignored) {}
+        return null;
+    }
     private void onArrived() {
         if (state == State.EN_ROUTE) {
             state = State.ON_SCENE;
-            System.out.printf("[AMBULANCE:%s] ARRIVÉ sur les lieux %s%n",
-                    getLocalName(), currentIncidentId);
-
-            // Notifier le Dispatcher (LIEN §3.1-A synchronisation)
+            System.out.printf("[AMBULANCE:%s] ARRIVÉ sur les lieux %s%n", getLocalName(), currentIncidentId);
             notifyDispatcher(EmergencyOntology.PERF_ARRIVED, currentIncidentId);
-
-            // Traitement sur les lieux : WakerBehaviour non bloquant
+            // Traitement sur place
             addBehaviour(new WakerBehaviour(this, TREATMENT_MS) {
                 @Override
                 protected void onWake() {
-                    finishTreatment();
+                    requestHospital();
                 }
             });
-
+        }  else if (state == State.GOING_TO_HOSPITAL) {
+            state = State.IDLE;
+            notifyDispatcher(EmergencyOntology.PERF_RESOLVED, currentIncidentId);
+            currentIncidentId = null;
+            System.out.printf("[AMBULANCE:%s] Patient déposé à l'hôpital — IDLE%n", getLocalName());
         } else if (state == State.RETURNING) {
             state = State.IDLE;
             System.out.printf("[AMBULANCE:%s] Retour base — IDLE%n", getLocalName());
@@ -246,9 +282,17 @@ public class AmbulanceAgent extends Agent {
     private void handleHospitalReply(ACLMessage msg) {
         Map<String, String> m = EmergencyOntology.deserialize(msg.getContent());
         String hospital = m.getOrDefault(EmergencyOntology.KEY_HOSPITAL_NAME, "inconnu");
-        String beds     = m.getOrDefault(EmergencyOntology.KEY_BEDS_AVAILABLE, "?");
-        System.out.printf("[AMBULANCE:%s] → Hôpital assigné : %s (lits restants : %s)%n",
-                getLocalName(), hospital, beds);
+        String hospX = m.getOrDefault(EmergencyOntology.KEY_COORD_X, null);
+        String hospY = m.getOrDefault(EmergencyOntology.KEY_COORD_Y, null);
+        if (hospX != null && hospY != null) {
+            targetX = Double.parseDouble(hospX);
+            targetY = Double.parseDouble(hospY);
+            state = State.GOING_TO_HOSPITAL;
+            System.out.printf("[AMBULANCE:%s] → Hôpital %s à (%.0f,%.0f)%n", getLocalName(), hospital, targetX, targetY);
+        } else {
+            System.out.printf("[AMBULANCE:%s] → Hôpital %s (pas de coordonnées, résolu)%n", getLocalName(), hospital);
+            finishTreatment();
+        }
     }
 
     // ════════════════════════════════════════════════════════════════════════
