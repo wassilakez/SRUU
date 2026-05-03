@@ -129,16 +129,36 @@ public class DispatcherAgent extends Agent {
     // TRAITEMENT ALERTE CAPTEUR
     // ════════════════════════════════════════════════════════════════════════
     private void handleSensorAlert(ACLMessage msg) {
-        String content    = msg.getContent();
+        String content = msg.getContent();
+        if (content == null || content.isBlank()) return;
+
+        // FIX : l'incidentId peut venir du content OU du conversation-id
         String incidentId = msg.getConversationId();
 
-        String type     = EmergencyOntology.get(content, EmergencyOntology.KEY_INCIDENT_TYPE);
-        int    severity = Integer.parseInt(
-            EmergencyOntology.get(content, EmergencyOntology.KEY_SEVERITY));
-        int    x        = Integer.parseInt(
-            EmergencyOntology.get(content, EmergencyOntology.KEY_COORD_X));
-        int    y        = Integer.parseInt(
-            EmergencyOntology.get(content, EmergencyOntology.KEY_COORD_Y));
+        // Si conversation-id est null → lire l'ID depuis le content du message
+        if (incidentId == null || incidentId.isBlank()) {
+            incidentId = EmergencyOntology.get(content, EmergencyOntology.KEY_INCIDENT_ID);
+        }
+
+        // Si toujours null → générer un ID de secours
+        if (incidentId == null || incidentId.isBlank()) {
+            incidentId = "INC-AUTO-" + System.currentTimeMillis();
+        }
+
+        // Lire le type, sévérité, coordonnées
+        String type = EmergencyOntology.get(content, EmergencyOntology.KEY_INCIDENT_TYPE);
+        if (type == null || type.isBlank()) return; // message invalide
+
+        int severity;
+        int x, y;
+        try {
+            severity = Integer.parseInt(EmergencyOntology.get(content, EmergencyOntology.KEY_SEVERITY));
+            x        = Integer.parseInt(EmergencyOntology.get(content, EmergencyOntology.KEY_COORD_X));
+            y        = Integer.parseInt(EmergencyOntology.get(content, EmergencyOntology.KEY_COORD_Y));
+        } catch (NumberFormatException e) {
+            System.err.println("[DISPATCHER] Message mal formé : " + content);
+            return;
+        }
 
         Incident incident = new Incident(type, severity, x, y);
         activeIncidents.put(incidentId, incident);
@@ -146,16 +166,10 @@ public class DispatcherAgent extends Agent {
 
         System.out.printf("[DISPATCHER] Incident reçu : %s%n", incident);
 
-        // Journaliser
         notifyLogger("INCIDENT_DETECTED", incidentId, content);
-
-        // Demander un corridor de trafic (§3.1-A coordination temporelle)
         requestTrafficCorridor(incidentId, x, y);
-
-        // Lancer le Contract Net (§3.1-C)
         launchContractNet(incidentId, type, severity, x, y);
     }
-
     // ════════════════════════════════════════════════════════════════════════
     // FIPA CONTRACT NET — LIEN §3.1-C
     // Étapes : CFP → (attente timeout) → évaluation PROPOSE → ACCEPT/REJECT
