@@ -45,15 +45,13 @@ public class FireTruckAgent extends Agent {
 
     @Override
     protected void setup() {
-        Object[] args = getArguments();
-        if (args != null && args.length == 1) {
-            String[] coords = args[0].toString()
-                                     .replaceAll("[^0-9,]", "").split(",");
-            if (coords.length == 2) {
-                posX = Double.parseDouble(coords[0]);
-                posY = Double.parseDouble(coords[1]);
-            }
-        }
+    	Object[] args = getArguments();
+    	if (args != null && args.length >= 2) {
+    	    try {
+    	        posX = Double.parseDouble(args[0].toString());
+    	        posY = Double.parseDouble(args[1].toString());
+    	    } catch (NumberFormatException e) {}
+    	}
         System.out.printf("[FIRETRUCK:%s] Démarrage @ (%.0f,%.0f) — eau=%d%n",
                 getLocalName(), posX, posY, waterLevel);
 
@@ -94,7 +92,7 @@ public class FireTruckAgent extends Agent {
         });
 
         // ── Comportement 3 : déplacement ─────────────────────────────────
-        addBehaviour(new TickBehaviour(this, TICK_MS) {
+        addBehaviour(new TickerBehaviour(this, TICK_MS) {
             @Override
             protected void onTick() {
                 if (state == State.EN_ROUTE || state == State.RETURNING) {
@@ -158,6 +156,14 @@ public class FireTruckAgent extends Agent {
     // ACCEPTATION
     // ════════════════════════════════════════════════════════════════════════
     private void handleAccept(ACLMessage accept) {
+    	if (state != State.IDLE) {
+            ACLMessage refuse = accept.createReply();
+            refuse.setPerformative(ACLMessage.FAILURE);
+            refuse.setContent("BUSY");
+            send(refuse);
+            System.out.printf("[FIRETRUCK:%s] REFUSE (déjà occupé) pour %s%n", getLocalName(), accept.getConversationId());
+            return;
+        }
         String content = accept.getContent();
         currentIncidentId   = accept.getConversationId();
         currentIncidentType = EmergencyOntology.get(content,
@@ -213,7 +219,7 @@ public class FireTruckAgent extends Agent {
      * Si eau = 0 → condition d'abandon → ABORT.
      */
     private void startWorkCycle() {
-        addBehaviour(new TickBehaviour(this, WORK_TICK_MS) {
+        addBehaviour(new TickerBehaviour(this, WORK_TICK_MS) {
             @Override
             protected void onTick() {
                 if (state != State.ACTIVE) { stop(); return; }
