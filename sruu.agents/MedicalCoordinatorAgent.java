@@ -99,13 +99,15 @@ public class MedicalCoordinatorAgent extends Agent {
             "[MED_COORD] %s → %s (lits restants: %d)%n",
             unitName, bestHospital, hospitals.get(bestHospital)[2]);
 
+        int[] hospCoords = hospitals.get(bestHospital);
         ACLMessage reply = req.createReply();
         reply.setPerformative(ACLMessage.INFORM);
         reply.setConversationId(EmergencyOntology.PERF_HOSPITAL_REPLY);
         reply.setContent(EmergencyOntology.serialize(
             EmergencyOntology.KEY_HOSPITAL_NAME,  bestHospital,
-            EmergencyOntology.KEY_BEDS_AVAILABLE,
-                String.valueOf(hospitals.get(bestHospital)[2]),
+            EmergencyOntology.KEY_BEDS_AVAILABLE, String.valueOf(hospCoords[2]),
+            EmergencyOntology.KEY_COORD_X,        String.valueOf(hospCoords[0]),
+            EmergencyOntology.KEY_COORD_Y,        String.valueOf(hospCoords[1]),
             "unitName", unitName
         ));
         send(reply);
