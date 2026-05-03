@@ -47,15 +47,13 @@ public class BCUAgent extends Agent {
 
     @Override
     protected void setup() {
-        Object[] args = getArguments();
-        if (args != null && args.length == 1) {
-            String[] coords = args[0].toString()
-                                     .replaceAll("[^0-9,]", "").split(",");
-            if (coords.length == 2) {
-                posX = Double.parseDouble(coords[0]);
-                posY = Double.parseDouble(coords[1]);
-            }
-        }
+    	Object[] args = getArguments();
+    	if (args != null && args.length >= 2) {
+    	    try {
+    	        posX = Double.parseDouble(args[0].toString());
+    	        posY = Double.parseDouble(args[1].toString());
+    	    } catch (NumberFormatException e) {}
+    	}
         System.out.printf("[BCU:%s] Démarrage @ (%.0f,%.0f) — décontaminant=%d%n",
                 getLocalName(), posX, posY, decontaminantLevel);
 
@@ -94,7 +92,7 @@ public class BCUAgent extends Agent {
         });
 
         // ── Comportement 3 : déplacement ─────────────────────────────────
-        addBehaviour(new TickBehaviour(this, TICK_MS) {
+        addBehaviour(new TickerBehaviour(this, TICK_MS) {
             @Override
             protected void onTick() {
                 if (state == State.EN_ROUTE || state == State.RETURNING) {
@@ -165,6 +163,15 @@ public class BCUAgent extends Agent {
     // ACCEPTATION
     // ════════════════════════════════════════════════════════════════════════
     private void handleAccept(ACLMessage accept) {
+    	if (state != State.IDLE) {
+            // Refuser poliment
+            ACLMessage refuse = accept.createReply();
+            refuse.setPerformative(ACLMessage.FAILURE);
+            refuse.setContent("BUSY");
+            send(refuse);
+            System.out.printf("[BCU:%s] REFUSE (déjà occupé)%n", getLocalName());
+            return;
+        }
         String content = accept.getContent();
         currentIncidentId = accept.getConversationId();
         targetX = Double.parseDouble(
@@ -218,7 +225,7 @@ public class BCUAgent extends Agent {
      * À mi-réserve → incident résolu (simulation durée de décontamination).
      */
     private void startDecontaminationCycle() {
-        addBehaviour(new TickBehaviour(this, DECON_TICK_MS) {
+        addBehaviour(new TickerBehaviour(this, DECON_TICK_MS) {
             @Override
             protected void onTick() {
                 if (state != State.DECONTAMINATING) { stop(); return; }
