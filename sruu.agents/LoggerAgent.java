@@ -75,11 +75,17 @@ public class LoggerAgent extends Agent {
 
     private void logEvent(ACLMessage msg) {
         String content = msg.getContent();
-        Map<String, String> m = EmergencyOntology.deserialize(content);
+        System.out.println("[LOGGER] Message reçu brut : " + content);
+        
+        Map<String, String> m = new HashMap<>();
+        for (String pair : content.split(";")) {
+            String[] kv = pair.split("=", 2);
+            if (kv.length == 2) m.put(kv[0].trim(), kv[1].trim());
+        }
 
-        String eventType  = m.getOrDefault("eventType",  "UNKNOWN");
+        String eventType  = m.getOrDefault("eventType", "UNKNOWN");
         String incidentId = m.getOrDefault("incidentId", "-");
-        String details    = m.getOrDefault("details",    "");
+        String details    = m.getOrDefault("details", "");
         String ts         = sdf.format(new Date());
 
         if (logWriter != null) {
@@ -87,8 +93,7 @@ public class LoggerAgent extends Agent {
             logWriter.flush();
         }
 
-        System.out.printf("[LOGGER] %s | %-25s | %-8s | %s%n",
-                ts, eventType, incidentId, details);
+        System.out.printf("[LOGGER] %s | %-25s | %-8s | %s%n", ts, eventType, incidentId, details);
 
         // Mise à jour statistiques
         switch (eventType) {
@@ -99,8 +104,9 @@ public class LoggerAgent extends Agent {
             case "INCIDENT_RESOLVED":
                 resolvedIncidents++;
                 unresolvedIds.remove(incidentId);
-                String rt = extractField(details, "responseTime");
-                if (!rt.isEmpty() && !"-1".equals(rt)) {
+                String rt = m.get("responseTime"); // ← extraction directe
+                System.out.println("[LOGGER] responseTime = " + rt);
+                if (rt != null && !rt.isEmpty() && !"-1".equals(rt)) {
                     try {
                         totalResponseTime += Long.parseLong(rt);
                         responseCount++;
