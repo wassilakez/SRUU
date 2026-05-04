@@ -400,16 +400,18 @@ public class DispatcherAgent extends Agent {
         } else if (content.contains(EmergencyOntology.PERF_RESOLVED)) {
             // Incident résolu
             System.out.printf("[DISPATCHER] Incident %s RÉSOLU par %s%n", convId, sender);
-            Incident inc = activeIncidents.remove(convId);
+            Incident inc = activeIncidents.get(convId);
+            long respTime = -1;
             if (inc != null) {
                 inc.setStatus(Incident.Status.RESOLVED);
                 inc.setResolvedAt(System.currentTimeMillis());
+                respTime = inc.responseTimeMs();
+                System.out.println("[DISPATCHER] Temps réponse = " + respTime + " ms pour " + convId);
             }
+            activeIncidents.remove(convId);
             unitAssignments.remove(sender);
-            notifyLogger("INCIDENT_RESOLVED", convId,
-                    "unit=" + sender + ";responseTime="
-                    + (inc != null ? inc.responseTimeMs() : -1));
-
+            // ⭐ LIGNE IMPORTANTE : envoie responseTime au Logger
+            notifyLogger("INCIDENT_RESOLVED", convId, "unit=" + sender + ";responseTime=" + respTime);
         } else if (content.contains(EmergencyOntology.PERF_ABORT)) {
             // §3.1-A coordination : ABORT → réaffectation dynamique
             System.out.printf(
@@ -476,12 +478,13 @@ public class DispatcherAgent extends Agent {
         ACLMessage log = new ACLMessage(ACLMessage.INFORM);
         log.addReceiver(loggerAID);
         log.setConversationId(EmergencyOntology.PERF_LOG_EVENT);
-        log.setContent(EmergencyOntology.serialize(
-            "eventType",  eventType,
-            "incidentId", incidentId,
-            "details",    details,
-            "timestamp",  String.valueOf(System.currentTimeMillis())
-        ));
+        
+        // ⭐ CONSTRUCTION MANUELLE pour être sûr
+        String content = "eventType=" + eventType + 
+                         ";incidentId=" + incidentId + 
+                         ";details=" + details + 
+                         ";timestamp=" + System.currentTimeMillis();
+        log.setContent(content);
         send(log);
     }
 
