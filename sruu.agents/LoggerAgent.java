@@ -12,15 +12,12 @@ import java.io.*;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
-/**
- * Agent PASSIF — ne modifie JAMAIS l'état du système.
- * LIEN §3.2 : rôle = SERVICE_LOGGER dans le DF.
- * Produit : sruu_log.csv (horodaté) + sruu_report.txt (métriques finales).
- */
+
 public class LoggerAgent extends Agent {
 
     private static final String LOG_FILE    = "sruu_log.csv";
-    private static final String REPORT_FILE = System.getProperty("user.home") + "/Desktop/sruu_report.txt";
+    private static final String REPORT_FILE = "sruu_report.txt";
+
 
     private PrintWriter logWriter;
     private final SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss.SSS");
