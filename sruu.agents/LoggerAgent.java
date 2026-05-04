@@ -20,7 +20,7 @@ import java.util.*;
 public class LoggerAgent extends Agent {
 
     private static final String LOG_FILE    = "sruu_log.csv";
-    private static final String REPORT_FILE = "sruu_report.txt";
+    private static final String REPORT_FILE = System.getProperty("user.home") + "/Desktop/sruu_report.txt";
 
     private PrintWriter logWriter;
     private final SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss.SSS");
@@ -51,6 +51,15 @@ public class LoggerAgent extends Agent {
                 } else {
                     block();
                 }
+            }
+        });
+
+        // ✅ AJOUT : Générer le rapport automatiquement après 2 minutes
+        addBehaviour(new WakerBehaviour(this, 120000) { // 2 minutes
+            @Override
+            protected void onWake() {
+                generateFinalReport();
+                System.out.println("[LOGGER] Rapport généré automatiquement !");
             }
         });
 
@@ -118,6 +127,7 @@ public class LoggerAgent extends Agent {
     /** Rapport final généré à l'arrêt */
     @Override
     protected void takeDown() {
+        System.out.println("[LOGGER] Chemin du rapport : " + new File(REPORT_FILE).getAbsolutePath());
         generateFinalReport();
         if (logWriter != null) logWriter.close();
         try { DFService.deregister(this); } catch (Exception ignored) {}
